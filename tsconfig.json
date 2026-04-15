@@ -2,9 +2,10 @@
   "compilerOptions": {
     "target": "ES2019",
     "module": "CommonJS",
-    "rootDir": "./src",
+    "rootDir": "./backend",
     "outDir": "./dist",
     "esModuleInterop": true,
     "strict": true
-  }
+  },
+  "include": ["backend/**/*"]
 }
