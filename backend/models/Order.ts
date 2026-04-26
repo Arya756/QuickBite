@@ -45,7 +45,6 @@ class Order {
     }
     const amount = this.getTotalAmount();
     this.paymentStrategy.pay(amount);
-
     this.payment = new Payment(amount, this.paymentStrategy.constructor.name);
   }
 
@@ -53,9 +52,12 @@ class Order {
     this.observers.forEach(observer => observer.update(this, status));
   }
 
+  // Aligned with the service state machine transitions
   updateStatus(newStatus: string) {
     const validStatuses = [
       "CREATED",
+      "PAID",
+      "ACCEPTED",
       "PREPARING",
       "DELIVERED",
       "CANCELLED"
@@ -66,7 +68,6 @@ class Order {
     this.status = newStatus;
     this.notifyObservers(newStatus);
   }
-
 }
 
 export default Order;

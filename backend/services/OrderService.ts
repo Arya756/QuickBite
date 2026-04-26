@@ -16,18 +16,18 @@ class OrderService {
     });
   }
 
-
-
   async addItem(
     orderId: string,
     itemId: string,
     requestingUser: { id: string; role: string }
   ) {
+    // Null check FIRST, then paid check
     const order = await this.repo.findById(orderId);
-    if (order && order.payment && order.payment.method) {
+    if (!order) throw new Error("Order not found");
+
+    if (order.payment && order.payment.method) {
       throw new Error("Cannot add items to a paid order");
     }
-    if (!order) throw new Error("Order not found");
 
     // Role check
     if (requestingUser.role !== "CUSTOMER") {
@@ -39,7 +39,7 @@ class OrderService {
       throw new Error("Access denied: You do not own this order");
     }
 
-    // Fetching item from DB 
+    // Fetching item from DB
     const menuItem = await MenuItem.findById(itemId);
     if (!menuItem) throw new Error("Menu item not found");
 
@@ -85,7 +85,7 @@ class OrderService {
       throw new Error("Access denied");
     }
 
-    if (order && order.payment && order.payment.method) {
+    if (order.payment && order.payment.method) {
       throw new Error("Cannot modify a paid order");
     }
 
@@ -104,7 +104,6 @@ class OrderService {
     } else if (action === "DECREMENT") {
       const newQuantity = (currentItem.quantity || 1) - 1;
       if (newQuantity <= 0) {
-        // Remove item if quantity becomes 0
         updatedItems.splice(index, 1);
       } else {
         updatedItems[index] = {
@@ -135,7 +134,7 @@ class OrderService {
       throw new Error("Access denied");
     }
 
-    if (order && order.payment && order.payment.method) {
+    if (order.payment && order.payment.method) {
       throw new Error("Cannot modify a paid order");
     }
 
@@ -151,12 +150,16 @@ class OrderService {
     });
   }
 
-  async processPayment(orderId: string, strategy: PaymentStrategy, requestingUser: { id: string, role: string }) {
+  async processPayment(
+    orderId: string,
+    strategy: PaymentStrategy,
+    requestingUser: { id: string; role: string },
+    methodName: string   // Use explicit string instead of class name
+  ) {
     const orderData: any = await this.repo.findById(orderId);
 
     if (!orderData) throw new Error("Order not found");
 
-    // Ownership check
     if (orderData.userId.toString() !== requestingUser.id) {
       throw new Error("Access denied: You do not own this order");
     }
@@ -168,6 +171,7 @@ class OrderService {
     if (!orderData.items || orderData.items.length === 0) {
       throw new Error("Cannot process payment: No items in order");
     }
+
     if (orderData.payment && orderData.payment.method) {
       throw new Error("Payment already completed");
     }
@@ -177,28 +181,25 @@ class OrderService {
     order.status = orderData.status;
     order.notifications = orderData.notifications || [];
 
-
     order.addObserver(new UserObserver());
 
     const total = order.getTotalAmount();
     strategy.pay(total);
 
-    const paymentMethod = strategy.constructor.name;
-    const message = `✅ Order Paid Successfully via ${paymentMethod} (₹${total})`;
-
+    const message = `✅ Order paid via ${methodName} — ₹${total.toFixed(2)}`;
     order.notifyObservers(message);
 
     return await this.repo.update(orderId, {
       payment: {
         amount: total,
-        method: paymentMethod
+        method: methodName  // Clean string, not class name
       },
       status: "PAID",
       notifications: order.notifications
     });
   }
 
-  async updateStatus(orderId: string, newStatus: string, requestingUser: { id: string, role: string }) {
+  async updateStatus(orderId: string, newStatus: string, requestingUser: { id: string; role: string }) {
     if (requestingUser.role !== 'ADMIN') {
       throw new Error("Access denied: Only admins can update order status");
     }
@@ -213,7 +214,7 @@ class OrderService {
 
     order.addObserver(new UserObserver());
 
-    const validTransitions: any = {
+    const validTransitions: Record<string, string[]> = {
       CREATED: ["PAID"],
       PAID: ["ACCEPTED"],
       ACCEPTED: ["PREPARING"],
@@ -229,7 +230,7 @@ class OrderService {
     }
 
     order.status = newStatus;
-    order.notifyObservers(`Order is now ${newStatus}`);;
+    order.notifyObservers(`📦 Your order is now: ${newStatus}`);
 
     return await this.repo.update(orderId, {
       status: newStatus,
@@ -237,11 +238,10 @@ class OrderService {
     });
   }
 
-  async getOrder(orderId: string, requestingUser: { id: string, role: string }) {
+  async getOrder(orderId: string, requestingUser: { id: string; role: string }) {
     const order = await this.repo.findById(orderId);
     if (!order) return null;
 
-    // CUSTOMER ownership check
     if (requestingUser.role === 'CUSTOMER' && order.userId.toString() !== requestingUser.id) {
       throw new Error("Access denied: You do not own this order");
     }
